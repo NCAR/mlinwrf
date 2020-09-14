@@ -2,5 +2,5 @@
 Scons build file for mlinwrf dynamic library
 """
 import os
-env = Environment(F90 = 'ifort',ENV = os.environ, LINK='ld')
+env = Environment(F90 = os.environ['FC'],ENV = os.environ, LINK='ld')
 env.SharedLibrary(target='mlinwrf', source=['module_neural_net.f90','module_random_forest.f90'])
