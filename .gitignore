@@ -3,3 +3,5 @@ fortran/.sconsign.dblite
 fortran/libmlinwrf.so
 fortran/*.os
 fortran/*.mod
+fortran/*.o
+fortran/test_libmlinwrf
