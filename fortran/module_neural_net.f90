@@ -149,7 +149,7 @@ contains
         ! batch_size: number of items in single batch. Used to set intermediate array sizes (an int pointer in C).
         !
         ! Output:
-        ! neural_net_model_ptr (output): a pointer to an array of Dense layers composing a densely connected neural network (a malloced long long* in C)
+        ! neural_net_model_handle (output): an opaque handle (void* pointer in C) to an array of Dense layers composing a densely connected neural network.
         !
         use, intrinsic :: iso_c_binding, only:  c_loc, c_f_pointer, c_null_char, c_ptr
         implicit none
@@ -171,10 +171,10 @@ contains
 
     subroutine free_neural_net_c (neural_net_model_handle) bind (C)
         ! free_neuralnet_c
-        ! Description: function used to free a NeuralNetPtr object allocated in Fortran.
+        ! Description: function used to free an opaque handle and it's underlying NeuralNet pointer object allocated in Fortran.
         !
         ! Input:
-        ! neural_net_model_ptr (inout): a pointer to an array of Dense layers composing a densely connected neural network (a malloced long long* in C)
+        ! neural_net_model_handle (inout): an opaque handle (void* pointer in C) to an array of Dense layers composing a densely connected neural network
         !
         use, intrinsic :: iso_c_binding, only:  c_f_pointer, c_ptr
         implicit none
@@ -193,9 +193,11 @@ contains
         ! Description: generate prediction from neural network model for an arbitrary set of input values
         !
         ! Args:
-        ! input (input): 2D array of input values. Each row is a separate instance and each column is a model input.
-        ! neural_net_model (input): Array of type(Dense) objects
-        ! prediction (output): The prediction of the neural network as a 2D array of dimension (examples, outputs)
+        ! input (input): 2D array of input values. Each row is a separate instance and each column is a model input. This must be a contiguous 2D array of doubles in C. Called as &(input[0][0]) in C.
+        ! in_col_count (input): number of columns in input (an int* in C)
+        ! in_row_count (input): number of rows in input (an int* in C) 
+        ! neural_net_model (input): an opaque handle (void* pointer in C) to an array of Dense layers
+        ! prediction (output): The prediction of the neural network as a 2D array of dimension (examples, 1) (double* pointer in C).
         integer, intent(in) :: in_col_count,in_row_count 
         real(kind=8), intent(in) :: input(in_col_count,in_row_count)
         real(kind=8) :: input_t(in_row_count,in_col_count)
@@ -205,32 +207,19 @@ contains
         real(kind=8) :: prediction(in_row_count,1)
 
         input_t = transpose(input)
-        print *, "Fortran: shape(input_t) ", shape(input_t)
-        call print_2d_array(input_t)
+        !print *, "Fortran: shape(input_t) ", shape(input_t)
+        !call print_2d_array(input_t)
 
         call c_f_pointer(neural_net_model_handle, neural_net_model_ptr)
 
         call neural_net_predict(input_t,neural_net_model_ptr%layers,prediction)
         
-        print *, "Fortran: shape(prediction) ", shape(prediction)
-        call print_2d_array(prediction)
+        !print *, "Fortran: shape(prediction) ", shape(prediction)
+        !call print_2d_array(prediction)
 
         prediction_data(:in_row_count) = prediction(:,1)
-        !call test_neural_net()
     end subroutine neural_net_predict_c
 
-    subroutine test_neural_net() 
-        implicit none
-        real(kind=8) :: input(2,16)
-        type(Dense), allocatable:: neural_net_model(:)
-        real(kind=8) :: prediction(2,1)
-        input = reshape((/9.150,  7.937,  3.238,  9.843,  5.164,  0.503,  7.006,  4.641,  4.012,  8.836,  9.860,  5.038,  1.604,  0.595,  8.730,  3.891, 1.55, 7.18, 2.231, 1.68, 4.73, 0.37, 4.55, 3.08, 7.46, 7.95, 9.01, 2.75, 9.90, 1.79, 4.48, 6.30/),shape(input))
-        print *, "shape(input) ", shape(input)
-        call init_neural_net("/glade/scratch/bpetzke/moisture_scale-neural_network_fortran.nc", 1, neural_net_model)
-        call print_2d_array(input)
-        call neural_net_predict(input,neural_net_model,prediction)
-        print *, "prediction ", prediction
-    end subroutine test_neural_net
     
     subroutine init_neural_net(filename, batch_size, neural_net_model)
         ! init_neuralnet
@@ -269,7 +258,7 @@ contains
         call check(nf90_inq_varid(ncid, layer_name_var, layer_names_var_id))
         allocate(layer_names(num_layers))
         call check(nf90_get_var(ncid, layer_names_var_id, layer_names))
-        print *, "load neural network " // filename
+        !print *, "load neural network " // filename
         allocate(neural_net_model(1:num_layers))
         ! Loop through each layer and load the weights, bias term, and activation function
         do i=1, num_layers
