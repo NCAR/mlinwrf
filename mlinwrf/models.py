@@ -222,11 +222,11 @@ def decision_tree_dataframe(decision_tree_model, feature_names=None):
             else:
                 tree_dict[tree_var] = tree.value[:, 0, 0]
         elif tree_var == "feature_name":
-            tree_dict[tree_var] = feature_names[tree_dict["feature"]]
-            tree_dict[tree_var][tree_dict["feature"] == -1] = "leaf node__"
+            feature_idx = getattr(tree, "feature")
+            feature_idx[feature_idx < 0] = -1
+            tree_dict[tree_var] = np.where(feature_idx >= 0, feature_names[feature_idx], "leaf node__") 
         else:
             tree_dict[tree_var] = getattr(tree, tree_var)
-
     tree_frame = pd.DataFrame(tree_dict, columns=tree_vars)
     return tree_frame
 
