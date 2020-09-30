@@ -173,7 +173,8 @@ int main(int argc, char* argv[]){
 	print2d_d(test_n,1,y_test);
     }
 
-    const char* filename = "../mlinwrf/1d_test.nc";
+    //TODO: option parsing for handling nn vs rf and allow path to be passed
+    const char* filename = "../mlinwrf/1d_nn_test.nc";
 
     FORTRAN_HANDLE neural_net_model_handle;
     int batch_size = 1;

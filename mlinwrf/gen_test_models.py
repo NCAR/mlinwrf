@@ -4,6 +4,7 @@ import argparse
 import os
 
 import numpy as np
+from sklearn.ensemble import RandomForestRegressor
 
 #Ignore Tensorflow Warnings, Info
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
@@ -12,8 +13,8 @@ import models
 """
 Script to train/test neural net and random forest models with .nc and .csv output for prediction testing in Fortran module_neural_net.f90 and module_random_forest.f90
 
-Example Usage: ./getn_test_modules.py
-               ./getn_test_modules.py -v
+Example Usage: ./gen_test_models.py neural_net_nc 1d_nn_test.nc
+               ./gen_test_models.py random_forest_csv 1d_rf_test
 """
 
 np.set_printoptions(formatter={'float':lambda x: "%.3f"%x})
@@ -77,6 +78,8 @@ def gen_random_train_test(sample_size,test_size):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-v","--verbose",dest="verbose",help="Provide extra debugging information",action="store_true")
+    parser.add_argument('model_type', choices=['neural_net_nc', 'random_forest_csv'],help="Neural net with .nc output file or random forest with .csv output in directory")
+    parser.add_argument("out_model", help="Output .nc file for neural_net_nc or csv dir for random forest.")
     args = parser.parse_args()
 
     if args.verbose: print("Starting gen_test_models.py")
@@ -88,17 +91,31 @@ def main():
         print("x_test:\n", x_test)
         print("y_test:\n",y_test)
 
-    if args.verbose: print("Initializing neural network")
-    nn = models.DenseNeuralNetwork()
-    nn.build_neural_network(1,1)
-    if args.verbose: print("Training neural network")
-    nn.fit(x_train,y_train)
-    if args.verbose: print("Saving neural network")
-    nn.save_fortran_model("1d_test.nc")
-    if args.verbose: print("Predicting test set")
-    y_hat = nn.predict(x_test)
-    for y in y_hat:
-        print("%.3f"%y)
+    if args.model_type == "neural_net_nc":
+        if args.verbose: print("Initializing neural network")
+        nn = models.DenseNeuralNetwork()
+        nn.build_neural_network(1,1)
+        if args.verbose: print("Training neural network")
+        nn.fit(x_train,y_train)
+        if args.verbose: print("Saving neural network")
+        nn.save_fortran_model(args.out_model)
+        if args.verbose: print("Predicting test set")
+        y_hat = nn.predict(x_test)
+        for y in y_hat:
+            print("%.3f"%y)
+
+    if args.model_type == "random_forest_csv":
+        if args.verbose: print("Initializing random forest")
+        rf = RandomForestRegressor()
+        if args.verbose: print("Training random forest")
+        rf.fit(x_train,y_train)
+        if args.verbose: print("Saving random forest")
+        models.save_random_forest_csv(rf,np.array(["x"]),args.out_model)
+        if args.verbose: print("Predicting test set")
+        y_hat = rf.predict(x_test)
+        for y in y_hat:
+            print("%.3f"%y)
+
 
 if __name__ == '__main__':
     main()
