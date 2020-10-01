@@ -12,7 +12,10 @@ module module_random_forest
         real(kind=8), allocatable :: impurity(:)
     end type decision_tree
 
-    contains
+    type :: RandomForest
+       type(decision_tree),allocatable :: trees(:)
+    end type RandomForest
+contains
 
     subroutine load_decision_tree(file_path, filename, tree)
         character(len=*), intent(in) :: file_path
@@ -44,6 +47,61 @@ module module_random_forest
         close(100)
     end subroutine load_decision_tree
 
+    subroutine load_random_forest_c(file_path_c_str, file_path_len, random_forest_handle) bind (C)
+        use, intrinsic :: iso_c_binding, only:  c_loc, c_f_pointer, c_null_char, c_ptr
+        implicit none
+
+        character, dimension(*), intent(in) :: file_path_c_str
+        integer, intent(in) :: file_path_len
+        type (c_ptr), intent (out) :: random_forest_handle
+        type(RandomForest), pointer :: random_forest_ptr
+        character(10240), pointer :: file_path
+        
+        call c_f_pointer (c_loc(file_path_c_str), file_path)
+
+        allocate(random_forest_ptr)
+        call load_random_forest(file_path(1:file_path_len), random_forest_ptr%trees)
+        random_forest_handle = c_loc(random_forest_ptr)
+    end subroutine load_random_forest_c
+
+    subroutine free_random_forest_c (random_forest_handle) bind (C)
+        ! free_random_forest_c
+        ! Description: function used to free an opaque handle and it's underlying RandomForest pointer object allocated in Fortran.
+        !
+        ! Input:
+        ! random_forest_handle (in): an opaque handle (void* pointer in C) to an array of decision_tree
+        !
+        use, intrinsic :: iso_c_binding, only:  c_f_pointer, c_ptr
+        implicit none
+
+        type (c_ptr), intent (in) :: random_forest_handle
+        type(RandomForest), pointer :: random_forest_ptr
+
+        call c_f_pointer(random_forest_handle, random_forest_ptr)
+        deallocate(random_forest_ptr)
+    end subroutine free_random_forest_c
+
+    subroutine random_forest_predict_c(input_data, in_col_count, in_row_count, random_forest_handle, prediction_data) bind (C)
+        use, intrinsic :: iso_c_binding, only:  c_ptr, c_f_pointer
+        implicit none
+
+        integer, intent(in) :: in_col_count,in_row_count 
+        real(kind=8), intent(in) :: input_data(in_col_count,in_row_count)
+        real(kind=8) :: input_data_t(in_row_count,in_col_count)
+        type (c_ptr), intent (in) :: random_forest_handle
+        type(RandomForest), pointer :: random_forest_ptr
+        real(kind=8), intent(out) :: prediction_data(*)
+        real(kind=8) :: prediction(in_row_count)
+
+        input_data_t = transpose(input_data)
+
+        call c_f_pointer(random_forest_handle, random_forest_ptr)
+
+        call random_forest_predict(input_data_t,random_forest_ptr%trees,prediction)
+
+        prediction_data(:in_row_count) = prediction
+    end subroutine random_forest_predict_c
+
     subroutine load_random_forest(file_path, random_forest_array)
         character(len=*), intent(in) :: file_path
         type(decision_tree), allocatable, intent(out) :: random_forest_array(:)
@@ -51,6 +109,8 @@ module module_random_forest
         integer :: num_trees, n, stat
         num_trees = 0
         stat = 0
+        !print *, trim(file_path) // "tree_files.csv"
+
         open(55, file=trim(file_path) // "tree_files.csv", access="sequential", form="formatted")
         do
             read(55, '(A)', iostat=stat)

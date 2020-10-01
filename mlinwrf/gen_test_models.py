@@ -106,7 +106,7 @@ def main():
 
     if args.model_type == "random_forest_csv":
         if args.verbose: print("Initializing random forest")
-        rf = RandomForestRegressor()
+        rf = RandomForestRegressor(n_estimators=10)
         if args.verbose: print("Training random forest")
         rf.fit(x_train,y_train)
         if args.verbose: print("Saving random forest")

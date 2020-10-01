@@ -15,9 +15,13 @@ Application provides a test framework for loading .nc and .csv ML model output g
 typedef void* FORTRAN_HANDLE;
 
 //External Fortran functions in libmlinwrf.so
-extern FORTRAN_HANDLE init_neural_net_c(const char*, int*);
+extern FORTRAN_HANDLE init_neural_net_c(const char*, int*, int*);
 extern void free_neural_net_c(FORTRAN_HANDLE);
 extern void neural_net_predict_c(double*, int*, int*, FORTRAN_HANDLE, double*);
+
+extern FORTRAN_HANDLE load_random_forest_c(const char*,int*);
+extern void free_random_forest_c(FORTRAN_HANDLE);
+extern void random_forest_predict_c(double*, int*, int*, FORTRAN_HANDLE, double*);
 
 #define ARRAY_LEN(a) (sizeof(a)/sizeof(a[0]))
 
@@ -67,6 +71,7 @@ void random_floats(long seed, double min, double max, unsigned int n, double* xl
     }
 }
 
+//Generates random train and test X,y data. NULL can be passed for any of the 2D pointers to ignore populating these values.
 void gen_random_train_test(unsigned int train_n, unsigned int test_n, double** x_train, double** y_train, double** x_test, double** y_test){
     long seed = 31;
     unsigned int data_len = train_n+test_n;
@@ -80,12 +85,12 @@ void gen_random_train_test(unsigned int train_n, unsigned int test_n, double** x
       ys[i] = eval_poly(coeff,ARRAY_LEN(coeff),xs[i]);
     }
     for(i=0; i < train_n; i++){
-      x_train[i][0] = xs[i];
-      y_train[i][0] = ys[i];
+      if (x_train) x_train[i][0] = xs[i];
+      if (y_train) y_train[i][0] = ys[i];
     }
     for(i=0; i < test_n; i++){
-      x_test[i][0] = xs[train_n+i];
-      y_test[i][0] = ys[train_n+i];
+      if (x_test) x_test[i][0] = xs[train_n+i];
+      if (y_test) y_test[i][0] = ys[train_n+i];
     }
 }
 
@@ -133,6 +138,37 @@ void print1d_d(int count, double* vec){
     }
 }
 
+void print_usage(){
+  fprintf(stderr, "Usage: %s [-v] model_type model_path\n", "test_libmlinwrf");
+}
+
+void test_neural_net(const char* model_path, int verbose, unsigned int row_count, unsigned int col_count, double** x_test, double* predict){
+    FORTRAN_HANDLE neural_net_model_handle;
+    int batch_size = 1;
+    if (verbose) printf("Calling neural_net_init_c\n");
+    int model_path_len = strlen(model_path);
+    neural_net_model_handle = init_neural_net_c(model_path, &model_path_len, &batch_size);
+    if (verbose) printf("Calling neural_net_predict_c\n");
+    neural_net_predict_c(&(x_test[0][0]), &col_count, &row_count, neural_net_model_handle, predict);
+    if (verbose) printf("C: predictions (from Fortran)\n");
+    print1d_d(row_count, predict);
+    if (verbose) printf("Calling free_neural_net_c\n");
+    free_neural_net_c(neural_net_model_handle);
+}
+
+void test_random_forest(const char* model_path, int verbose, unsigned int row_count, unsigned int col_count, double** x_test, double* predict){
+    FORTRAN_HANDLE random_forest_handle;
+    if (verbose) printf("Calling load_random_forest_c\n");
+    int model_path_len = strlen(model_path);
+    random_forest_handle = load_random_forest_c(model_path,&model_path_len);
+    if (verbose) printf("Calling random_forest_predict_c\n");
+    random_forest_predict_c(&(x_test[0][0]), &col_count, &row_count, random_forest_handle, predict);
+    if (verbose) printf("C: predictions (from Fortran)\n");
+    print1d_d(row_count, predict);
+    if (verbose) printf("Calling free_random_forest_c\n");
+    free_random_forest_c(random_forest_handle);
+}
+
 int main(int argc, char* argv[]){
     int verbose = 0;
     int opt;
@@ -140,13 +176,25 @@ int main(int argc, char* argv[]){
     while ((opt = getopt(argc, argv, "v")) != -1) {
        switch (opt) {
        case 'v': verbose = 1; break;
-       default:
-           fprintf(stderr, "Usage: %s [-v]\n", argv[0]);
-           exit(EXIT_FAILURE);
+       case '?':
+	   print_usage();
+           exit(2);
        }
     }
     if (verbose) printf("Begin testing libmlinwrf\n");
 
+    int argidx = optind;
+    if (argidx == argc){
+        print_usage();
+        exit(EXIT_FAILURE); 
+    }
+    const char* model_type = argv[optind++];
+    if (argidx == argc){
+        print_usage();
+        exit(EXIT_FAILURE); 
+    }
+    const char* model_path = argv[optind++];
+    
 #ifdef TEST
     test_eval_poly();
 #endif
@@ -157,46 +205,33 @@ int main(int argc, char* argv[]){
     double train_size = 1-test_size;
     unsigned int train_n = (unsigned int)(train_size*sample_size);
     unsigned int test_n = (unsigned int)(test_size*sample_size);
-    double**  x_train = malloc2d_d(train_n,1);
-    double**  y_train = malloc2d_d(train_n,1);
     double**  x_test = malloc2d_d(test_n,1);
     double**  y_test = malloc2d_d(test_n,1);
-    gen_random_train_test(train_n,test_n,x_train,y_train,x_test,y_test);
+    gen_random_train_test(train_n,test_n,NULL,NULL,x_test,y_test);
     if (verbose) {
-	printf("x_train:\n");
-	print2d_d(train_n,1,x_train);
-	printf("y_train:\n");
-	print2d_d(train_n,1,y_train);
 	printf("x_test:\n");
 	print2d_d(test_n,1,x_test);
 	printf("y_test:\n");
 	print2d_d(test_n,1,y_test);
     }
 
-    //TODO: option parsing for handling nn vs rf and allow path to be passed
-    const char* filename = "../mlinwrf/1d_nn_test.nc";
-
-    FORTRAN_HANDLE neural_net_model_handle;
-    int batch_size = 1;
-    if (verbose) printf("Calling neural_net_init_c\n");
-    neural_net_model_handle = init_neural_net_c(filename, &batch_size);
-
-    int row_count = test_n;
-    int col_count = 1;
-    if (verbose) printf("C: test_input\n");
+    unsigned int row_count = test_n;
+    unsigned int col_count = 1;
     double* predict = (double*)malloc(sizeof(double*)*row_count);
-    if (verbose) printf("Calling neural_net_predict_c\n");
-    neural_net_predict_c(&(x_test[0][0]), &col_count, &row_count, neural_net_model_handle, predict);
-    if (verbose) printf("C: predictions (from Fortran)\n");
-    print1d_d(row_count, predict);
 
-    if (verbose) printf("Calling free_neural_net_c\n");
-    free_neural_net_c(neural_net_model_handle);
+    if (strncmp(model_type,"neural_net_nc",strlen("neural_net_nc")) == 0){
+        if (verbose) printf("Calling test_neural_net\n");
+        test_neural_net(model_path, verbose, row_count, col_count, x_test, predict);
+    }
+    else if(strncmp(model_type,"random_forest_csv",strlen("random_forest_csv")) == 0){
+        if (verbose) printf("Calling test_random_forest\n");
+	test_random_forest(model_path, verbose, row_count, col_count, x_test, predict);
+    }
+    else{
+        printf("Error: Unknown model_type\n");
+    }
+
     if (verbose) printf("Freeing C arrays\n");
-    free(x_train[0]);
-    free(x_train);
-    free(y_train[0]);
-    free(y_train);
     free(x_test[0]);
     free(x_test);
     free(y_test[0]);
