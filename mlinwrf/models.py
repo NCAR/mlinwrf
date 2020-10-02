@@ -247,7 +247,7 @@ def predict_decision_tree_frame(input_data, dt_frame):
     value = -9999.0
     while not_leaf:
         value = dt_frame.loc[index, "value"]
-        if dt_frame.loc[index, "feature"] == -2:
+        if dt_frame.loc[index, "feature"] < 0:
             not_leaf = False
         else:
             exceeds = input_data[dt_frame.loc[index, "feature"]] > dt_frame.loc[index, "threshold"]
