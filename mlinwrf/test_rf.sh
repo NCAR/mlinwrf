@@ -14,13 +14,13 @@ trap cleanup EXIT
 
 echo "Generating test data and performing predictions in Python"
 py_rf_out=$(gen_test_models.py random_forest_csv ${test_dir})
-echo "Performing predictions in Fortran"
+echo "Generating test data and performing predictions in Fortran"
 curr_dir=$(pwd)
 cd ../fortran
 fort_rf_out=$(run_testmlinwrf.sh random_forest_csv "${test_dir}/random_forest/")
 cd $curr_dir
 
-echo "Comparing Python Neural Net vs Fortran Neural Net predictions"
+echo "Comparing Python Random Forest vs Fortran Random Forest predictions"
 diff <(echo "$py_rf_out") <(echo "$fort_rf_out")
 exit_status="$?"
 if [ $exit_status -eq 0 ]; 

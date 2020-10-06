@@ -14,7 +14,7 @@ trap cleanup EXIT
 
 echo "Generating test data and performing predictions in Python"
 py_nn_out=$(gen_test_models.py neural_net_nc $test_file)
-echo "Performing predictions in Fortran"
+echo "Generating test data and performing predictions in Fortran"
 curr_dir=$(pwd)
 cd ../fortran
 fort_nn_out=$(run_testmlinwrf.sh neural_net_nc $test_file)
