@@ -1,24 +1,24 @@
 """
-Scons build file for mlinwrf.so dynamic library and test_libmlinwrf executable
+Scons build file for libmlinwrf.so dynamic library and test_libmlinwrf executable
 """
 import os
 
 lib_env = Environment(
     F90 = os.environ['FC'],
-    F90FLAGS = '-O3',
+    F90FLAGS = '-g',
     ENV = os.environ,
     LINK = os.environ['FC'],
-    LINKFLAGS = '-O3'
+    LINKFLAGS = '-g'
     )
 lib_env.SharedLibrary(target='mlinwrf', source=['module_neural_net.f90','module_random_forest.f90'])
 test_env = Environment(
     F90 = os.environ['FC'],
-    F90FLAGS = '-O3',
+    F90FLAGS = '-g',
     CC = os.environ['CC'],
-    CCFLAGS='-O3',
+    CCFLAGS='-g',
     ENV = os.environ,
     LINK = os.environ['FC'],
-    LINKFLAGS = '-O3 -nofor-main -L. -lmlinwrf -limf -lsvml -lintlc'
+    LINKFLAGS = '-g -nofor-main -L. -lmlinwrf -limf -lsvml -lintlc'
     )
 test_env.Object(target='test_libmlinwrf.o', source='test_libmlinwrf.c')
 test_env.Program(target = 'test_libmlinwrf', source = ['test_libmlinwrf', 'libmlinwrf.so'])

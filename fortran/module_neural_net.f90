@@ -13,6 +13,9 @@ module module_neural_net
         real(kind=8), allocatable :: output(:, :)
     end type Dense
 
+    type :: NeuralNet
+       type(Dense),allocatable :: layers(:)
+    end type NeuralNet
 contains
 
     subroutine apply_dense(input, layer, output)
@@ -136,6 +139,88 @@ contains
         return
     end subroutine apply_activation
 
+    subroutine init_neural_net_c (filename_c_str, filename_len, batch_size, neural_net_model_handle) bind (C)
+        ! init_neuralnet_c
+        ! Description: C binding to subroutine that loads dense neural network weights from a netCDF file and builds an array of
+        ! Dense types from the weights and activations.
+        !
+        ! Input:
+        ! filename: Full path to the netCDF file (a const char* in C)
+        ! filename_len: strlen length of the filename
+        ! batch_size: number of items in single batch. Used to set intermediate array sizes (an int pointer in C).
+        !
+        ! Output:
+        ! neural_net_model_handle (output): an opaque handle (void* pointer in C) to an array of Dense layers composing a densely connected neural network.
+        !
+        use, intrinsic :: iso_c_binding, only:  c_loc, c_f_pointer, c_null_char, c_ptr
+        implicit none
+        
+        character, dimension(*), intent(in) :: filename_c_str
+        integer, intent(in) :: batch_size
+        integer, intent(in) :: filename_len
+        type (c_ptr), intent (out) :: neural_net_model_handle
+        type(NeuralNet), pointer :: neural_net_model_ptr
+        character(10240), pointer :: filename
+       
+        call c_f_pointer (c_loc(filename_c_str), filename)
+   
+        allocate(neural_net_model_ptr)
+        call init_neural_net(filename(1:filename_len), batch_size, neural_net_model_ptr%layers)
+        neural_net_model_handle = c_loc(neural_net_model_ptr)
+    end subroutine init_neural_net_c
+
+    subroutine free_neural_net_c (neural_net_model_handle) bind (C)
+        ! free_neuralnet_c
+        ! Description: function used to free an opaque handle and it's underlying NeuralNet pointer object allocated in Fortran.
+        !
+        ! Input:
+        ! neural_net_model_handle (in): an opaque handle (void* pointer in C) to an array of Dense layers composing a densely connected neural network
+        !
+        use, intrinsic :: iso_c_binding, only:  c_f_pointer, c_ptr
+        implicit none
+
+        type (c_ptr), intent (in) :: neural_net_model_handle
+        type(NeuralNet), pointer :: neural_net_model_ptr
+
+        call c_f_pointer(neural_net_model_handle, neural_net_model_ptr)
+        deallocate(neural_net_model_ptr)
+    end subroutine free_neural_net_c
+    
+    subroutine neural_net_predict_c(input, in_col_count, in_row_count, neural_net_model_handle, prediction_data) bind (C)
+        use, intrinsic :: iso_c_binding, only:  c_ptr, c_f_pointer
+        implicit none
+        ! neural_net_predict
+        ! Description: generate prediction from neural network model for an arbitrary set of input values
+        !
+        ! Args:
+        ! input (input): 2D array of input values. Each row is a separate instance and each column is a model input. This must be a contiguous 2D array of doubles in C. Called as &(input[0][0]) in C.
+        ! in_col_count (input): number of columns in input (an int* in C)
+        ! in_row_count (input): number of rows in input (an int* in C) 
+        ! neural_net_model (input): an opaque handle (void* pointer in C) to an array of Dense layers
+        ! prediction (output): The prediction of the neural network as a 2D array of dimension (examples, 1) (double* pointer in C).
+        integer, intent(in) :: in_col_count,in_row_count 
+        real(kind=8), intent(in) :: input(in_col_count,in_row_count)
+        real(kind=8) :: input_t(in_row_count,in_col_count)
+        type (c_ptr), intent (in) :: neural_net_model_handle
+        type(NeuralNet), pointer :: neural_net_model_ptr
+        real(kind=8), intent(out) :: prediction_data(*)
+        real(kind=8) :: prediction(in_row_count,1)
+
+        input_t = transpose(input)
+        !print *, "Fortran: shape(input_t) ", shape(input_t)
+        !call print_2d_array(input_t)
+
+        call c_f_pointer(neural_net_model_handle, neural_net_model_ptr)
+
+        call neural_net_predict(input_t,neural_net_model_ptr%layers,prediction)
+        
+        !print *, "Fortran: shape(prediction) ", shape(prediction)
+        !call print_2d_array(prediction)
+
+        prediction_data(:in_row_count) = prediction(:,1)
+    end subroutine neural_net_predict_c
+
+    
     subroutine init_neural_net(filename, batch_size, neural_net_model)
         ! init_neuralnet
         ! Description: Loads dense neural network weights from a netCDF file and builds an array of
@@ -150,7 +235,7 @@ contains
         !
         character(len=*), intent(in) :: filename
         integer, intent(in) :: batch_size
-        type(Dense), allocatable, intent(out) :: neural_net_model(:)
+        type(Dense), allocatable, target, intent(out) :: neural_net_model(:)
         integer :: ncid, num_layers_id, num_layers
         integer :: layer_names_var_id, i, layer_in_dimid, layer_out_dimid
         integer :: layer_in_dim, layer_out_dim
@@ -173,7 +258,7 @@ contains
         call check(nf90_inq_varid(ncid, layer_name_var, layer_names_var_id))
         allocate(layer_names(num_layers))
         call check(nf90_get_var(ncid, layer_names_var_id, layer_names))
-        print *, "load neural network " // filename
+        !print *, "load neural network " // filename
         allocate(neural_net_model(1:num_layers))
         ! Loop through each layer and load the weights, bias term, and activation function
         do i=1, num_layers
